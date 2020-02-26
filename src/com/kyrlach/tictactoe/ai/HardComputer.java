@@ -9,17 +9,21 @@ import com.kyrlach.tictactoe.model.Player;
 
 import java.util.Random;
 
-public final class EasyComputer implements Player {
+public final class HardComputer implements Player {
+
     private final Random random;
     private Piece playingAs;
 
-    public EasyComputer() {
+    public HardComputer() {
         this.random = new Random();
     }
 
     private int[] scoreMoves(Board board) throws OutOfBoundsException {
-        int[] scores = new int[9];
+        // Seed initial scores with biases
+        int[] scores = { 1, 0, 1, 0, 2, 0, 1, 0, 1};
         AIHelpers.scoreOccupied(board, scores);
+        AIHelpers.scorePossibleTwos(board, scores, playingAs);
+        AIHelpers.scoreBlocks(board, scores, playingAs);
         AIHelpers.scoreWins(board, scores, playingAs);
         return scores;
     }

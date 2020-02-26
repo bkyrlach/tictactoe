@@ -1,9 +1,8 @@
 package com.kyrlach.tictactoe.ai;
 
+import com.kyrlach.tictactoe.error.InvalidMoveException;
 import com.kyrlach.tictactoe.error.OutOfBoundsException;
-import com.kyrlach.tictactoe.model.Board;
-import com.kyrlach.tictactoe.model.GameResult;
-import com.kyrlach.tictactoe.model.Piece;
+import com.kyrlach.tictactoe.model.*;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -17,11 +16,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-public class LearningComputer implements Computer {
+public class LearningComputer implements Player {
 
     private final Random random;
     private int turn;
-    private List<History> previousMoves;
+    private final List<History> previousMoves;
+    private Piece playingAs;
 
     public LearningComputer() {
         this.random = new Random();
@@ -63,8 +63,24 @@ public class LearningComputer implements Computer {
         return turnFile;
     }
 
+    private byte[] intsToBytes(int[] scores) {
+        byte[] bytes = new byte[9];
+        for(int i = 0; i < 9; i++) {
+            bytes[i] = (byte)scores[i];
+        }
+        return bytes;
+    }
+
+    private int[] bytesToInts(byte[] scores) {
+        int[] ints = new int[9];
+        for(int i = 0; i < 9; i++) {
+            ints[i] = scores[i];
+        }
+        return ints;
+    }
+
     @Override
-    public Integer makeMove(Board board) throws OutOfBoundsException {
+    public void makeMove(Board board) throws InvalidMoveException, OutOfBoundsException {
         byte[] scores = new byte[9];
         byte[] gameBoardState = boardToBytes(board);
         boolean foundScores = false;
@@ -81,7 +97,9 @@ public class LearningComputer implements Computer {
                         read = fis.read(oldScores);
                         if(compareStates(fileBoardState, gameBoardState)) {
                             foundScores = true;
-                            scores = oldScores;
+                            int[] tempScores = bytesToInts(oldScores);
+                            AIHelpers.scoreOccupied(board, tempScores);
+                            scores = intsToBytes(tempScores);
                             break;
                         }
                     }
@@ -100,9 +118,7 @@ public class LearningComputer implements Computer {
         if(!foundScores) {
             int[] newScores = new int[9];
             AIHelpers.scoreOccupied(board, newScores);
-            for(int i = 0; i < 9; i++) {
-                scores[i] = (byte)newScores[i];
-            }
+            scores = intsToBytes(newScores);
             try {
                 FileOutputStream fos = new FileOutputStream(turnFile, true);
                 fos.write(gameBoardState);
@@ -118,121 +134,93 @@ public class LearningComputer implements Computer {
             scoreInts[i] = scores[i];
         }
 
-        Integer move = AIHelpers.pickBest(scoreInts, random);
+        Integer move = AIHelpers.pickBest(scoreInts, random, 12);
         previousMoves.add(new History(gameBoardState, move));
         turn++;
-        Piece currentOccupant = board.pieceAt(move);
-        if(!Piece.SPACE.equals(currentOccupant)) {
-            System.out.println("oops.");
-        }
-        return move;
-    }
 
-    private void updateLoss() {
-        for(int i = 0; i < turn; i++) {
-            History h = previousMoves.get(i);
-            Path p = FileSystems.getDefault().getPath("ai_date", "turn_" + i + ".data");
-            try {
-                FileChannel fc = FileChannel.open(p, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                ByteBuffer buffer = ByteBuffer.allocate(18);
-                int read;
-                int pos = 0;
-                do {
-                    read = fc.read(buffer);
-
-                    byte[] boardState = new byte[9];
-                    buffer.get(boardState, 0, 9);
-                    byte[] scores = new byte[9];
-                    buffer.get(scores, 9, 9);
-                    if(compareStates(boardState, h.getBoardState())) {
-                        scores[h.getMove() - 1] = (byte)(scores[h.getMove() - 1] - 1);
-                        ByteBuffer newScores = ByteBuffer.wrap(scores);
-                        fc.write(newScores, pos + 9);
-                        break;
+        Piece temp = board.pieceAt(move);
+        if(!Piece.SPACE.equals(temp)) {
+            boolean found = false;
+            for(int y = 1; y <= 3 && !found; y++) {
+                for(int x = 1; x <= 3 && !found; x++) {
+                    Coordinates coords = new Coordinates(x, y);
+                    Piece current = board.pieceAt(coords);
+                    if(Piece.SPACE.equals(current)) {
+                        move = coords.toSquare();
+                        found = true;
                     }
-                    pos += read;
-                } while(read != -1);
-                fc.close();
-            } catch (Exception ex) {
-
+                }
             }
         }
+
+        board.makeMove(playingAs, move);
     }
 
-    private void updateWin() {
-        for(int i = 0; i < turn; i++) {
-            History h = previousMoves.get(i);
-            Path p = FileSystems.getDefault().getPath("ai_date", "turn_" + i + ".data");
-            try {
-                FileChannel fc = FileChannel.open(p, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                ByteBuffer buffer = ByteBuffer.allocate(18);
-                int read;
-                int pos = 0;
-                do {
-                    read = fc.read(buffer);
-
-                    byte[] boardState = new byte[9];
-                    buffer.get(boardState, 0, 9);
-                    byte[] scores = new byte[9];
-                    buffer.get(scores, 9, 9);
-                    if(compareStates(boardState, h.getBoardState())) {
-                        scores[h.getMove() - 1] = (byte)(scores[h.getMove() - 1] + 2);
-                        ByteBuffer newScores = ByteBuffer.wrap(scores);
-                        fc.write(newScores, pos + 9);
-                        break;
-                    }
-                    pos += read;
-                } while(read != -1);
-                fc.close();
-            } catch (Exception ex) {
-
-            }
-        }
-    }
-
-    private void updateTie() {
-        for(int i = 0; i < turn; i++) {
-            History h = previousMoves.get(i);
-            Path p = FileSystems.getDefault().getPath("ai_date", "turn_" + i + ".data");
-            try {
-                FileChannel fc = FileChannel.open(p, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                ByteBuffer buffer = ByteBuffer.allocate(18);
-                int read;
-                int pos = 0;
-                do {
-                    read = fc.read(buffer);
-
-                    byte[] boardState = new byte[9];
-                    buffer.get(boardState, 0, 9);
-                    byte[] scores = new byte[9];
-                    buffer.get(scores, 9, 9);
-                    if(compareStates(boardState, h.getBoardState())) {
-                        scores[h.getMove() - 1] = (byte)(scores[h.getMove() - 1] + 1);
-                        ByteBuffer newScores = ByteBuffer.wrap(scores);
-                        fc.write(newScores, pos + 9);
-                        break;
-                    }
-                    pos += read;
-                } while(read != -1);
-                fc.close();
-            } catch (Exception ex) {
-
-            }
-        }
+    @Override
+    public void playAs(Piece piece) {
+        playingAs = piece;
     }
 
     @Override
     public void notify(GameResult result) {
-        switch(result) {
-            case X_WINS:
-                updateWin();
-                break;
-            case O_WINS:
-                updateLoss();
-                break;
-            case CATS_GAME:
-                updateTie();
-                break;
+        for(int i = 0; i < turn; i++) {
+            History h = previousMoves.get(i);
+            Path p = FileSystems.getDefault().getPath("ai_data", "turn_" + i + ".data");
+            try {
+                FileChannel fc = FileChannel.open(p, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                ByteBuffer buffer = ByteBuffer.allocate(18);
+                int read;
+                int pos = 0;
+                do {
+                    read = fc.read(buffer);
+                    if(read == 18) {
+                        buffer.rewind();
+
+                        byte[] stupid = new byte[18];
+                        buffer.get(stupid);
+
+                        byte[] boardState = new byte[9];
+                        byte[] scores = new byte[9];
+
+                        System.arraycopy(stupid, 0, boardState, 0, 9);
+                        System.arraycopy(stupid, 9, scores, 0, 9);
+
+                        if (compareStates(boardState, h.getBoardState())) {
+                            int sidx = h.getMove() - 1;
+                            byte newScore = scores[sidx];
+                            switch(result) {
+                                case X_WINS:
+                                    if(Piece.X.equals(playingAs)) {
+                                        newScore = (byte)(newScore + (turn * 2));
+                                    } else {
+                                        newScore = (byte)(newScore + (turn * -1));
+                                    }
+                                    break;
+                                case O_WINS:
+                                    if(Piece.O.equals(playingAs)) {
+                                        newScore = (byte)(newScore + (turn * 2));
+                                    } else {
+                                        newScore = (byte)(newScore + (turn * -1));
+                                    }
+                                    break;
+                                case CATS_GAME:
+                                    newScore = (byte)(newScore + turn);
+                                    break;
+                            }
+                            scores[sidx] = newScore;
+                            ByteBuffer newScores = ByteBuffer.wrap(scores);
+                            fc.write(newScores, pos + 9);
+                            break;
+                        }
+                        pos += read;
+                        buffer.clear();
+                    }
+                } while(read == 18);
+                fc.close();
+            } catch (Exception ex) {
+
+            }
         }
+
     }
 }

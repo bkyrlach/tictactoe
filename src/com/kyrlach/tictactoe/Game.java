@@ -1,21 +1,21 @@
 package com.kyrlach.tictactoe;
 
-import com.kyrlach.tictactoe.ai.Computer;
 import com.kyrlach.tictactoe.error.InvalidMoveException;
 import com.kyrlach.tictactoe.error.OutOfBoundsException;
 import com.kyrlach.tictactoe.model.*;
 
-import java.util.ArrayList;
 import java.util.List;
 
 public class Game {
     private final InputOutput inputOutput;
-    private final Computer computer;
     private final Board board;
+    private final Player xs;
+    private final Player os;
 
-    public Game(InputOutput inputOutput, Computer computer) {
-        this.computer = computer;
+    public Game(InputOutput inputOutput, Player xs, Player os) {
         this.inputOutput = inputOutput;
+        this.xs = xs;
+        this.os = os;
         this.board = new Board();
     }
 
@@ -72,36 +72,13 @@ public class Game {
         return winner;
     }
 
-    private void humanMove() {
-        boolean done = false;
-        while(!done) {
-            try {
-                String moveStr = inputOutput.prompt("Pick a space (1-9)? ");
-                int move = Integer.parseInt(moveStr) ;
-                board.makeMove(Piece.O, move);
-                done = true;
-            } catch (NumberFormatException nfe) {
-                inputOutput.println("Must enter a space (1-9).");
-            } catch (InvalidMoveException ime) {
-                inputOutput.println("That's not a valid move.");
-            } catch (OutOfBoundsException oobe) {
-                inputOutput.println("You must enter a number between one and nine.");
-            }
-        }
-    }
-
-    private void computerMove() throws OutOfBoundsException, InvalidMoveException {
-        Integer move = computer.makeMove(board);
-        board.makeMove(Piece.X, move);
-    }
-
     private void handleMove(Piece piece) throws InvalidMoveException, OutOfBoundsException {
         switch(piece) {
             case O:
-                humanMove();
+                os.makeMove(board);
                 break;
             case X:
-                computerMove();
+                xs.makeMove(board);
                 break;
         }
     }
@@ -125,7 +102,8 @@ public class Game {
 
         GameResult result = determineWinner();
 
-        computer.notify(result);
+        xs.notify(result);
+        os.notify(result);
 
         switch(result) {
             case X_WINS:

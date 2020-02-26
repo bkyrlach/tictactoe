@@ -16,6 +16,10 @@ public class Board {
         }
     }
 
+    public List<Piece> getBoard() {
+        return new ArrayList<Piece>(board);
+    }
+
     public void checkBounds(int square) throws OutOfBoundsException {
         if(square < 1 || square > 9) {
             throw new OutOfBoundsException(square);
